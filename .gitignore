@@ -1,0 +1,7 @@
+# 建议加上这几行
+data/
+pretrained/
+work_dirs/
+*.pth
+*.zip
+*.tar.gz
