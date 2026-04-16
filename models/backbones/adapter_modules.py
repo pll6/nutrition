@@ -140,7 +140,7 @@ class SpraseFeatAttn(nn.Module):
         c = self.norm_kv(c)
         
         bs, q_length, dim = q.shape
-        _, k_length, _ = k.shape
+        _, k_length, _ = c.shape
         q = self.q_proj(q).view(bs, q_length, self.num_heads, self.head_dim).transpose(1, 2)
         k = self.k_proj(c).view(bs, k_length, self.num_heads, self.head_dim).transpose(1, 2)
         v = self.v_proj(c).view(bs, k_length, self.num_heads, self.head_dim).transpose(1, 2)

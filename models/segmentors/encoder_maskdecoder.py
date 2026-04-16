@@ -10,7 +10,7 @@ from mmseg.ops import resize
 
 
 @SEGMENTORS.register_module()
-class EncoderDecoderMask2Former(BaseSegmentor):
+class EncoderMaskDecoder(BaseSegmentor):
     """Encoder Decoder segmentors.
 
     EncoderDecoder typically consists of backbone, decode_head, auxiliary_head.
@@ -25,7 +25,7 @@ class EncoderDecoderMask2Former(BaseSegmentor):
                  test_cfg=None,
                  pretrained=None,
                  init_cfg=None):
-        super(EncoderDecoderMask2Former, self).__init__(init_cfg)
+        super(EncoderMaskDecoder, self).__init__(init_cfg)
         if pretrained is not None:
             assert backbone.get('pretrained') is None, \
                 'both backbone and segmentor set pretrained weight'
@@ -48,11 +48,11 @@ class EncoderDecoderMask2Former(BaseSegmentor):
         self.align_corners = self.decode_head.align_corners
         self.num_classes = self.decode_head.num_classes
 
-    def extract_feat(self, img):
+    def extract_feat(self, img, *args, **kwargs):
         """Extract features from images."""
-        x = self.backbone(img)
+        x = self.backbone(img, *args, **kwargs)
         if self.with_neck:
-            x = self.neck(x)
+            x = self.neck(x, *args, **kwargs)
         return x
 
     def encode_decode(self, img, img_metas):
@@ -67,13 +67,11 @@ class EncoderDecoderMask2Former(BaseSegmentor):
             align_corners=self.align_corners)
         return out
 
-    def _decode_head_forward_train(self, x, img_metas, gt_semantic_seg,
-                                   **kwargs):
+    def _decode_head_forward_train(self, x, img_metas, gt_semantic_seg, gt_labels, gt_masks, **kwargs):
         """Run forward function and calculate loss for decode head in
         training."""
         losses = dict()
-        loss_decode = self.decode_head.forward_train(x, img_metas,
-                                                     gt_semantic_seg, **kwargs)
+        loss_decode = self.decode_head.forward_train(x, img_metas, gt_semantic_seg, gt_labels, gt_masks, **kwargs)
 
         losses.update(add_prefix(loss_decode, 'decode'))
         return losses
@@ -90,7 +88,13 @@ class EncoderDecoderMask2Former(BaseSegmentor):
 
         return seg_logit
 
-    def forward_train(self, img, img_metas, gt_semantic_seg, **kwargs):
+    def forward_train(self, img,
+                      img_metas,
+                      depth, 
+                      gt_semantic_seg,
+                      gt_labels,
+                      gt_masks, 
+                      **kwargs):
         """Forward function for training.
 
         Args:
@@ -107,13 +111,11 @@ class EncoderDecoderMask2Former(BaseSegmentor):
             dict[str, Tensor]: a dictionary of loss components
         """
 
-        x = self.extract_feat(img)
+        x = self.extract_feat(img, depth=depth)
 
         losses = dict()
 
-        loss_decode = self._decode_head_forward_train(x, img_metas,
-                                                      gt_semantic_seg,
-                                                      **kwargs)
+        loss_decode = self._decode_head_forward_train(x, img_metas, gt_semantic_seg, gt_labels, gt_masks, **kwargs)
         losses.update(loss_decode)
         return losses
 

@@ -73,7 +73,7 @@ class ModifiedPad(Pad):
                 results[key] = mmcv.impad(
                     results[key],
                     shape=results['pad_shape'][:2],
-                    pad_val=-1) 
+                    pad_val=0.0)
             else:
                 results[key] = mmcv.impad(
                     results[key],
@@ -91,6 +91,8 @@ class NormalizeDepth(object):
     def __call__(self, results):
         depth = results['depth']
  
+        invalid_mask = (depth <= 0)
+
         if self.mode == 'z-score':
             if self.mean is None or self.std is None:
                 raise ValueError(" NormalizeDepth 报错：使用 'z-score' 模式时，必须在 config 中提供 mean 和 std 参数！")
@@ -107,6 +109,7 @@ class NormalizeDepth(object):
         else:
             raise ValueError(f" NormalizeDepth 报错：不支持的归一化模式 '{self.mode}'，请使用 'z-score' 或 'min-max'。")
         
+        depth[invalid_mask] = 0.0
         results['depth'] = depth
         
         return results
@@ -118,3 +121,4 @@ class NormalizeDepth(object):
         else:
             repr_str += f"(mode='{self.mode}', max_depth={self.max_depth})"
         return repr_str
+    

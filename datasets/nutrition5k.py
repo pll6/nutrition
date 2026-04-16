@@ -5,7 +5,7 @@ from mmseg.datasets.builder import DATASETS
 from mmseg.datasets.custom import CustomDataset
 
 
-@DATASETS.register_module(force=True)
+@DATASETS.register_module()
 class Nutrition5kDataset(CustomDataset):
     """
     The ``img_suffix`` and ``seg_map_suffix`` are both fixed to '.png'.

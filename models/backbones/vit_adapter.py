@@ -37,7 +37,7 @@ class ViTAdapter(TIMMVisionTransformer):
         self.num_plate_emd = num_plate_emd
 
         self.level_embed = nn.Parameter(torch.zeros(3, embed_dim))
-        self.plate_embed = nn.Parameter(torch.zeros(num_plate_emd, embed_dim))
+        self.plate_embed = nn.Parameter(torch.randn(num_plate_emd, embed_dim) * 0.02)
  
         self.spm_rgb = SpatialPriorModule(inplanes=conv_inplane, embed_dim=embed_dim, with_cp=False)
         #kernei_size = 5(7) 更大的感受野在第一层就能起到类似“中值滤波”的作用
@@ -67,7 +67,8 @@ class ViTAdapter(TIMMVisionTransformer):
         self.norm4 = nn.SyncBatchNorm(embed_dim)
 
         self.up.apply(self._init_weights)
-        self.spm.apply(self._init_weights)
+        self.spm_rgb.apply(self._init_weights)
+        self.spm_depth.apply(self._init_weights)
         self.interactions.apply(self._init_weights)
         self.apply(self._init_deform_weights)
         normal_(self.level_embed)
@@ -104,15 +105,20 @@ class ViTAdapter(TIMMVisionTransformer):
         c4 = c4 + self.level_embed[2]
         return c2, c3, c4
 
-    def forward(self, x, d):
+    def forward(self, x, depth): 
         deform_inputs1, deform_inputs2 = deform_inputs(x)
 
         # SPM forward
+        d = depth
         c1, c2, c3, c4 = self.spm_rgb(x)
         d1, d2, d3, d4 = self.spm_depth(d)
 
         c2, c3, c4 = self._add_level_embed(c2, c3, c4)
         d2, d3, d4 = self._add_level_embed(d2, d3, d4) 
+
+        bs = x.shape[0]
+
+        plate_embed = self.plate_embed.unsqueeze(0).expand(bs, -1, -1)
         c, d = torch.cat([self.plate_embed, c2, c3, c4], dim=1), torch.cat([d2, d3, d4], dim=1)
 
         # Patch Embedding forward

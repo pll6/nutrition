@@ -9,8 +9,10 @@ from mmseg.datasets.pipelines import LoadImageFromFile
 
 @PIPELINES.register_module()
 class LoadImageWithDepthFromFile(LoadImageFromFile):
-    def __init__(self, **kwargs):
+    def __init__(self, multiple_camara_param = True, **kwargs):
         super().__init__(**kwargs)
+
+        self.multiple_camara_param = multiple_camara_param
 
     def __call__(self, results):
         results = super().__call__(results)
@@ -30,6 +32,15 @@ class LoadImageWithDepthFromFile(LoadImageFromFile):
 
         depth_img = depth_img.astype(np.float32)
 
+        valid_pixels = depth_img[depth_img > 0]
+        
+        if self.multiple_camara_param:
+            if len(valid_pixels) > 0:
+                median_depth = np.median(valid_pixels)
+                # 如果中位数大于 1500，说明用了高精度刻度 (0.1mm)，强行除以 10 统一为 1mm
+                if median_depth > 1500:
+                    depth_img = depth_img / 10.0
+                
         if len(depth_img.shape) == 2:
             depth_img = np.expand_dims(depth_img, axis=-1)
         results['depth'] = depth_img

@@ -1,5 +1,5 @@
 from functools import partial
-
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -57,7 +57,7 @@ class MLPMaskDecoder(BaseDecodeHead):
 
         self.bg_cls_weight = 0
         class_weight = loss_cls.get('class_weight', None)
-        if class_weight is not None and (self.__class__ is MaskFormerHead):
+        if class_weight is not None and (self.__class__.__name__ == 'MLPMaskDecoder'):
             assert isinstance(class_weight, float), 'Expected ' \
                                                     'class_weight to have type float. Found ' \
                                                     f'{type(class_weight)}.'
@@ -90,9 +90,22 @@ class MLPMaskDecoder(BaseDecodeHead):
 
         self.init_weights()
 
-    def init_weights(self, m):
+    def init_weights(self, m=None):
         nn.init.normal_(self.class_embed.weight, std=0.01)
+        # 使用先验概率初始化 bias
+        # 假设在训练初期，绝大多数 query 是背景，只有约 10% 能命中盘子
+        prior_prob = 0.1
+        
+        # Softmax 下，设背景 bias 为 0，计算前景 bias
+        # p = exp(b_fg) / (exp(b_fg) + exp(b_bg)) -> b_fg = ln(p / (1-p))
+        bias_value = math.log(prior_prob / (1 - prior_prob))
+        
+        # 先把所有 bias 初始化为 0 (代表背景)
         nn.init.constant_(self.class_embed.bias, 0)
+        
+        # 将前景类 (索引 0 到 num_classes-1) 的 bias 设置为负数 (-2.19)
+        # 这样模型初始预测前景的概率约为 10%，避免初期 Loss 爆炸
+        nn.init.constant_(self.class_embed.bias[:self.num_classes], bias_value)
 
     def forward(self, feats, img_metas):
         """
