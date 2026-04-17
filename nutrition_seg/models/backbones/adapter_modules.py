@@ -217,8 +217,11 @@ class Extractor(nn.Module):
                 c = c + self.drop_path(self.cffn(self.cffn_norm(c), H, W))
             query = torch.cat([plate_emd, c], dim=1)
 
+            identity = plate_emd
             plate_emd = self.sprase_feat_attn(query, attn_mask, self.num_plate_emd)
 
+            plate_emd = identity + plate_emd
+            
             if self.with_ffn:
                 plate_emd = plate_emd + self.sprase_drop_path(self.plateffn(self.plateffn_norm(plate_emd)))
             query = torch.cat([plate_emd, c], dim=1)

@@ -87,7 +87,7 @@ model = dict(
         deform_ratio=0.5,
         with_cp=True,
         interaction_indexes=[[0, 5], [6, 11], [12, 17], [18, 23]],
-        with_depth = [False, False, True, True], 
+        with_depth = [False, False, False, False], 
         num_plate_emd=num_queries,
     ),
     decode_head=dict(
@@ -107,8 +107,8 @@ model = dict(
 # 5. 训练引擎配置区 (优化器、学习率、保存策略)
 # =========================================================
 # AdamW 是 ViT 和 MaskFormer 系列的标配
-optimizer = dict(type='AdamW', lr=0.001, weight_decay=0.05, 
-                 paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=1.0)}))
+optimizer = dict(type='AdamW', lr=0.0001, weight_decay=0.05, 
+                 paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1)}))
 optimizer_config = dict()
 
 # 学习率衰减策略

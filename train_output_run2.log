@@ -1,0 +1,229 @@
+nohup: ignoring input
+/home/zengyuzhi/conda_envs/Nutrition_env/lib/python3.9/site-packages/torch/utils/cpp_extension.py:25: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import packaging  # type: ignore[attr-defined]
+/home/zengyuzhi/conda_envs/Nutrition_env/lib/python3.9/site-packages/mmcv/__init__.py:20: UserWarning: On January 1, 2023, MMCV will release v2.0.0, in which it will remove components related to the training process and add a data transformation module. In addition, it will rename the package names mmcv to mmcv-lite and mmcv-full to mmcv. See https://github.com/open-mmlab/mmcv/blob/master/docs/en/compatibility.md for more details.
+  warnings.warn(
+2026-04-17 10:54:57,298 - mmseg - INFO - Environment info:
+------------------------------------------------------------
+sys.platform: linux
+Python: 3.9.25 (main, Nov  3 2025, 22:33:05) [GCC 11.2.0]
+CUDA available: True
+GPU 0: NVIDIA GeForce RTX 4090
+CUDA_HOME: /usr/local/cuda-11.7
+NVCC: Cuda compilation tools, release 11.7, V11.7.99
+GCC: gcc (Ubuntu 9.4.0-1ubuntu1~20.04.2) 9.4.0
+PyTorch: 1.13.1+cu117
+PyTorch compiling details: PyTorch built with:
+  - GCC 9.3
+  - C++ Version: 201402
+  - Intel(R) Math Kernel Library Version 2020.0.0 Product Build 20191122 for Intel(R) 64 architecture applications
+  - Intel(R) MKL-DNN v2.6.0 (Git Hash 52b5f107dd9cf10910aaa19cb47f3abf9b349815)
+  - OpenMP 201511 (a.k.a. OpenMP 4.5)
+  - LAPACK is enabled (usually provided by MKL)
+  - NNPACK is enabled
+  - CPU capability usage: AVX2
+  - CUDA Runtime 11.7
+  - NVCC architecture flags: -gencode;arch=compute_37,code=sm_37;-gencode;arch=compute_50,code=sm_50;-gencode;arch=compute_60,code=sm_60;-gencode;arch=compute_70,code=sm_70;-gencode;arch=compute_75,code=sm_75;-gencode;arch=compute_80,code=sm_80;-gencode;arch=compute_86,code=sm_86
+  - CuDNN 8.5
+  - Magma 2.6.1
+  - Build settings: BLAS_INFO=mkl, BUILD_TYPE=Release, CUDA_VERSION=11.7, CUDNN_VERSION=8.5.0, CXX_COMPILER=/opt/rh/devtoolset-9/root/usr/bin/c++, CXX_FLAGS= -fabi-version=11 -Wno-deprecated -fvisibility-inlines-hidden -DUSE_PTHREADPOOL -fopenmp -DNDEBUG -DUSE_KINETO -DUSE_FBGEMM -DUSE_QNNPACK -DUSE_PYTORCH_QNNPACK -DUSE_XNNPACK -DSYMBOLICATE_MOBILE_DEBUG_HANDLE -DEDGE_PROFILER_USE_KINETO -O2 -fPIC -Wno-narrowing -Wall -Wextra -Werror=return-type -Werror=non-virtual-dtor -Wno-missing-field-initializers -Wno-type-limits -Wno-array-bounds -Wno-unknown-pragmas -Wunused-local-typedefs -Wno-unused-parameter -Wno-unused-function -Wno-unused-result -Wno-strict-overflow -Wno-strict-aliasing -Wno-error=deprecated-declarations -Wno-stringop-overflow -Wno-psabi -Wno-error=pedantic -Wno-error=redundant-decls -Wno-error=old-style-cast -fdiagnostics-color=always -faligned-new -Wno-unused-but-set-variable -Wno-maybe-uninitialized -fno-math-errno -fno-trapping-math -Werror=format -Werror=cast-function-type -Wno-stringop-overflow, LAPACK_INFO=mkl, PERF_WITH_AVX=1, PERF_WITH_AVX2=1, PERF_WITH_AVX512=1, TORCH_VERSION=1.13.1, USE_CUDA=ON, USE_CUDNN=ON, USE_EXCEPTION_PTR=1, USE_GFLAGS=OFF, USE_GLOG=OFF, USE_MKL=ON, USE_MKLDNN=ON, USE_MPI=OFF, USE_NCCL=ON, USE_NNPACK=ON, USE_OPENMP=ON, USE_ROCM=OFF, 
+
+TorchVision: 0.14.1+cu117
+OpenCV: 4.13.0
+MMCV: 1.7.0
+MMCV Compiler: GCC 9.3
+MMCV CUDA Compiler: 11.7
+MMSegmentation: 0.30.0+0f31a98
+------------------------------------------------------------
+
+2026-04-17 10:54:57,299 - mmseg - INFO - Distributed training: False
+2026-04-17 10:54:57,563 - mmseg - INFO - Config:
+num_classes = 1
+num_queries = 20
+crop_size = (512, 512)
+depth_mean = 375.43
+depth_std = 89.56
+img_norm_cfg = dict(
+    mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
+train_pipeline = [
+    dict(type='LoadImageWithDepthFromFile'),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
+    dict(type='Resize', img_scale=(1024, 1024), ratio_range=(0.5, 2.0)),
+    dict(type='RandomCrop', crop_size=(512, 512), cat_max_ratio=0.75),
+    dict(type='RandomFlip', prob=0.5),
+    dict(
+        type='Normalize',
+        mean=[123.675, 116.28, 103.53],
+        std=[58.395, 57.12, 57.375],
+        to_rgb=True),
+    dict(type='NormalizeDepth', mode='z-score', mean=375.43, std=89.56),
+    dict(type='ModifiedPad', size=(512, 512), pad_val=0, seg_pad_val=255),
+    dict(type='ToMask'),
+    dict(type='DefaultFormatBundle'),
+    dict(
+        type='Collect',
+        keys=['img', 'depth', 'gt_semantic_seg', 'gt_masks', 'gt_labels'])
+]
+test_pipeline = [
+    dict(type='LoadImageWithDepthFromFile'),
+    dict(type='Resize', img_scale=(1024, 1024), keep_ratio=True),
+    dict(
+        type='Normalize',
+        mean=[123.675, 116.28, 103.53],
+        std=[58.395, 57.12, 57.375],
+        to_rgb=True),
+    dict(type='NormalizeDepth', mean=375.43, std=89.56),
+    dict(type='DefaultFormatBundle'),
+    dict(type='Collect', keys=['img', 'depth'])
+]
+data = dict(
+    samples_per_gpu=1,
+    workers_per_gpu=4,
+    train=dict(
+        type='Nutrition5kDataset',
+        data_root='/data/zengyuzhi/project/nutrition/data',
+        img_dir='images/rgb',
+        ann_dir='segmentations',
+        depth_img_dir='images/depth_raw',
+        split='splits/train_split_20260416_1116.txt',
+        pipeline=[
+            dict(type='LoadImageWithDepthFromFile'),
+            dict(type='LoadAnnotations', reduce_zero_label=False),
+            dict(
+                type='Resize', img_scale=(1024, 1024), ratio_range=(0.5, 2.0)),
+            dict(type='RandomCrop', crop_size=(512, 512), cat_max_ratio=0.75),
+            dict(type='RandomFlip', prob=0.5),
+            dict(
+                type='Normalize',
+                mean=[123.675, 116.28, 103.53],
+                std=[58.395, 57.12, 57.375],
+                to_rgb=True),
+            dict(
+                type='NormalizeDepth', mode='z-score', mean=375.43, std=89.56),
+            dict(
+                type='ModifiedPad',
+                size=(512, 512),
+                pad_val=0,
+                seg_pad_val=255),
+            dict(type='ToMask'),
+            dict(type='DefaultFormatBundle'),
+            dict(
+                type='Collect',
+                keys=[
+                    'img', 'depth', 'gt_semantic_seg', 'gt_masks', 'gt_labels'
+                ])
+        ]),
+    val=dict(
+        type='Nutrition5kDataset',
+        split='splits/val_split_20260416_1116.txt',
+        pipeline=[
+            dict(type='LoadImageWithDepthFromFile'),
+            dict(type='Resize', img_scale=(1024, 1024), keep_ratio=True),
+            dict(
+                type='Normalize',
+                mean=[123.675, 116.28, 103.53],
+                std=[58.395, 57.12, 57.375],
+                to_rgb=True),
+            dict(type='NormalizeDepth', mean=375.43, std=89.56),
+            dict(type='DefaultFormatBundle'),
+            dict(type='Collect', keys=['img', 'depth'])
+        ]),
+    test=dict(
+        type='Nutrition5kDataset',
+        split='splits/val_split_20260416_1116.txt',
+        pipeline=[
+            dict(type='LoadImageWithDepthFromFile'),
+            dict(type='Resize', img_scale=(1024, 1024), keep_ratio=True),
+            dict(
+                type='Normalize',
+                mean=[123.675, 116.28, 103.53],
+                std=[58.395, 57.12, 57.375],
+                to_rgb=True),
+            dict(type='NormalizeDepth', mean=375.43, std=89.56),
+            dict(type='DefaultFormatBundle'),
+            dict(type='Collect', keys=['img', 'depth'])
+        ]))
+model = dict(
+    type='EncoderMaskDecoder',
+    pretrained='pretrained/vit_large_patch16_224_augreg.pth',
+    backbone=dict(
+        type='ViTAdap3er',
+        patch_size=16,
+        embed_dim=1024,
+        depth=24,
+        num_heads=16,
+        mlp_ratio=4,
+        drop_path_rate=0.3,
+        qkv_bias=True,
+        init_values=1e-06,
+        conv_inplane=64,
+        n_points=4,
+        deform_num_heads=16,
+        cffn_ratio=0.25,
+        deform_ratio=0.5,
+        with_cp=True,
+        interaction_indexes=[[0, 5], [6, 11], [12, 17], [18, 23]],
+        with_depth=[False, False, False, False],
+        num_plate_emd=20),
+    decode_head=dict(
+        type='MLPMaskDecoder',
+        in_features=1024,
+        hidden_features=256,
+        out_features=256,
+        num_classes=1,
+        mlp_num_layers=3,
+        num_plate_emd=20),
+    test_cfg=dict(mode='whole'))
+optimizer = dict(
+    type='AdamW',
+    lr=0.0001,
+    weight_decay=0.05,
+    paramwise_cfg=dict(custom_keys=dict(backbone=dict(lr_mult=0.1))))
+optimizer_config = dict()
+lr_config = dict(policy='poly', power=0.9, min_lr=0.0, by_epoch=False)
+runner = dict(type='IterBasedRunner', max_iters=160000)
+checkpoint_config = dict(by_epoch=False, interval=8000)
+evaluation = dict(interval=8000, metric='mIoU')
+log_config = dict(interval=50, hooks=[dict(type='TextLoggerHook')])
+dist_params = dict(backend='nccl')
+log_level = 'INFO'
+load_from = None
+resume_from = None
+workflow = [('train', 1)]
+work_dir = 'work_dirs/nutrition_seg_run2'
+gpu_ids = range(0, 1)
+auto_resume = False
+device = 'cuda'
+
+2026-04-17 10:54:57,563 - mmseg - INFO - Set random seed to 1299759136, deterministic: False
+Traceback (most recent call last):
+  File "/home/zengyuzhi/conda_envs/Nutrition_env/lib/python3.9/site-packages/mmcv/utils/registry.py", line 69, in build_from_cfg
+    return obj_cls(**args)
+  File "/data/zengyuzhi/project/nutrition/nutrition_seg/models/segmentors/encoder_maskdecoder.py", line 33, in __init__
+    self.backbone = builder.build_backbone(backbone)
+  File "/home/zengyuzhi/conda_envs/Nutrition_env/lib/python3.9/site-packages/mmseg/models/builder.py", line 20, in build_backbone
+    return BACKBONES.build(cfg)
+  File "/home/zengyuzhi/conda_envs/Nutrition_env/lib/python3.9/site-packages/mmcv/utils/registry.py", line 237, in build
+    return self.build_func(*args, **kwargs, registry=self)
+  File "/home/zengyuzhi/conda_envs/Nutrition_env/lib/python3.9/site-packages/mmcv/cnn/builder.py", line 27, in build_model_from_cfg
+    return build_from_cfg(cfg, registry, default_args)
+  File "/home/zengyuzhi/conda_envs/Nutrition_env/lib/python3.9/site-packages/mmcv/utils/registry.py", line 61, in build_from_cfg
+    raise KeyError(
+KeyError: 'ViTAdap3er is not in the models registry'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/data/zengyuzhi/project/nutrition/train.py", line 216, in <module>
+    main()
+  File "/data/zengyuzhi/project/nutrition/train.py", line 172, in main
+    model = build_segmentor(
+  File "/home/zengyuzhi/conda_envs/Nutrition_env/lib/python3.9/site-packages/mmseg/models/builder.py", line 48, in build_segmentor
+    return SEGMENTORS.build(
+  File "/home/zengyuzhi/conda_envs/Nutrition_env/lib/python3.9/site-packages/mmcv/utils/registry.py", line 237, in build
+    return self.build_func(*args, **kwargs, registry=self)
+  File "/home/zengyuzhi/conda_envs/Nutrition_env/lib/python3.9/site-packages/mmcv/cnn/builder.py", line 27, in build_model_from_cfg
+    return build_from_cfg(cfg, registry, default_args)
+  File "/home/zengyuzhi/conda_envs/Nutrition_env/lib/python3.9/site-packages/mmcv/utils/registry.py", line 72, in build_from_cfg
+    raise type(e)(f'{obj_cls.__name__}: {e}')
+KeyError: "EncoderMaskDecoder: 'ViTAdap3er is not in the models registry'"
