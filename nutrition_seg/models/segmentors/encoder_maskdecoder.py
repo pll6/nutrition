@@ -165,7 +165,8 @@ class EncoderMaskDecoder(BaseSegmentor):
 
         mask_preds = decoder_train_output['mask_preds'] # [B, num_queries, H, W]
         mask_probs = mask_preds.sigmoid()
-        mask = torch.einsum('bq,bqhw->bhw', fg_prob, mask_probs).unsqueeze(1)
+        weighted_mask_probs = mask_probs * fg_prob.unsqueeze(-1).unsqueeze(-1) # [B, Q, H, W]
+        mask = torch.max(weighted_mask_probs, dim=1)[0].unsqueeze(1)
 
         masked_feats = []
         mask_h, mask_w = mask.shape[2], mask.shape[3]
@@ -185,7 +186,8 @@ class EncoderMaskDecoder(BaseSegmentor):
             masked_feat = f * mask_resized
             masked_feats.append(masked_feat)
 
-        plate_embed = torch.einsum('bq,bqc->bc', fg_prob, plate_embed)
+        prob_sum = fg_prob.sum(dim=1, keepdim=True) + 1e-6
+        plate_embed = torch.sum(fg_prob.unsqueeze(-1) * plate_embed, dim=1) / prob_sum
 
         loss_reg = self.regression_head.forward_train(plate_embed, masked_feats, gt_nutrition)
         losses.update(loss_reg)
@@ -344,7 +346,8 @@ class EncoderMaskDecoder(BaseSegmentor):
         if mask_probs.dim() == 3:
             mask_probs = mask_probs.unsqueeze(0)
             
-        mask = torch.einsum('bq,bqhw->bhw', fg_prob, mask_probs).unsqueeze(1)
+        weighted_mask_probs = mask_probs * fg_prob.unsqueeze(-1).unsqueeze(-1) # [B, Q, H, W]
+        mask = torch.max(weighted_mask_probs, dim=1)[0].unsqueeze(1)
 
         masked_feats = []
         mask_h, mask_w = mask.shape[2], mask.shape[3]
@@ -368,7 +371,8 @@ class EncoderMaskDecoder(BaseSegmentor):
             plate_embed_raw = plate_embed_raw.unsqueeze(0)
             
         # 聚合最终的盘子特征 (保持 1024 维，与回归头完美对齐)
-        plate_embed_final = torch.einsum('bq,bqc->bc', fg_prob, plate_embed_raw)
+        prob_sum = fg_prob.sum(dim=1, keepdim=True) + 1e-6
+        plate_embed_final = torch.sum(fg_prob.unsqueeze(-1) * plate_embed_raw, dim=1) / prob_sum
 
         # 4. 回归头推理
         if hasattr(self.regression_head, 'forward_test'):

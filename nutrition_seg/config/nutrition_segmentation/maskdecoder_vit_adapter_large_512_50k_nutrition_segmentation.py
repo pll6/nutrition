@@ -119,7 +119,6 @@ model = dict(
         type='MultiScaleNutritionHead',
         in_channels_list=[1024, 1024, 1024, 1024],
         plate_embed_dim=1024,
-        train_means=train_means
     ), 
     test_cfg=dict(mode='whole')
 )

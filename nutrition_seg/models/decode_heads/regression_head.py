@@ -11,11 +11,9 @@ class MultiScaleNutritionHead(BaseModule):
     def __init__(self, 
                  in_channels_list: List[int], 
                  plate_embed_dim: int,
-                 train_means: List[float],
                  out_channels: int = 5, 
-                 hidden_channels: int = 512,
-                 dropout_ratio: float = 0.5,
-                 loss_reg: Dict = dict(type='WeightedMSELoss', loss_weight=1.0),
+                 dropout_ratio: float = 0.2,
+                 loss_reg: Dict = dict(type='LogL1Loss', loss_weight=1.0),
                  init_cfg: Optional[Dict] = None):
 
         super(MultiScaleNutritionHead, self).__init__(init_cfg)
@@ -30,16 +28,17 @@ class MultiScaleNutritionHead(BaseModule):
         
         # 构建 MLP
         self.mlp = nn.Sequential(
-            nn.Linear(total_in_channels, hidden_channels),
+            nn.Linear(total_in_channels, 2048),
             nn.ReLU(inplace=True),
             nn.Dropout(p=dropout_ratio),
-            nn.Linear(hidden_channels, out_channels)
+            nn.Linear(2048, 512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=dropout_ratio),
+            nn.Linear(512, out_channels),
+            nn.Softplus()  # 强制输出正数
         )
         
-        # 构建 Loss 模块
-        loss_cfg = loss_reg.copy()
-        loss_cfg['train_means'] = train_means
-        self.loss_reg = build_loss(loss_cfg)
+        self.loss_reg = build_loss(loss_reg)
 
     def init_weights(self):
         super().init_weights()
@@ -61,7 +60,9 @@ class MultiScaleNutritionHead(BaseModule):
 
         feats = []
         for feat in masked_feats:
-            pooled = self.gap(feat).flatten(1) 
+            # pooled = self.gap(feat).flatten(1) 
+            # 改用 Sum Pooling，保留食物在图中的绝对面积信息！面积越大，特征的绝对数值越大，物理逻辑才守恒
+            pooled = feat.sum(dim=(2, 3))
             feats.append(pooled)
             
         feats = torch.cat(feats, dim=1) 
