@@ -14,9 +14,9 @@ class MultiScaleNutritionHead(BaseModule):
                  normalize: bool,
                  train_means,
                  train_std,
+                 loss_reg,
                  out_channels: int = 5, 
                  dropout_ratio: float = 0.2,
-                 loss_reg: Dict = dict(type='LogL1Loss', loss_weight=1.0),
                  init_cfg: Optional[Dict] = None):
 
         super(MultiScaleNutritionHead, self).__init__(init_cfg)
