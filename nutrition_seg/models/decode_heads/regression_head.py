@@ -11,6 +11,9 @@ class MultiScaleNutritionHead(BaseModule):
     def __init__(self, 
                  in_channels_list: List[int], 
                  plate_embed_dim: int,
+                 normalize: bool,
+                 train_means,
+                 train_std,
                  out_channels: int = 5, 
                  dropout_ratio: float = 0.2,
                  loss_reg: Dict = dict(type='LogL1Loss', loss_weight=1.0),
@@ -42,8 +45,16 @@ class MultiScaleNutritionHead(BaseModule):
             nn.Linear(512, out_channels)
             # 注意：我把 Softplus 移到了 forward 里面，方便做 Debug 拦截！
         )
-        
-        self.softplus = nn.Softplus()
+
+        softplus = nn.Softplus()
+        self.normalize = normalize
+        if self.normalize:
+            assert train_means is not None and train_std is not None, "如果 normalize=True，必须提供 train_means 和 train_std！"
+            self.register_buffer('nutrition_means', torch.tensor(train_means).float().reshape(1, -1))
+            self.register_buffer('nutrition_std', torch.tensor(train_std).float().reshape(1, -1))
+            softplus = nn.Identity()
+
+        self.softplus = softplus
         
         self.loss_reg = build_loss(loss_reg)
 
@@ -98,10 +109,19 @@ class MultiScaleNutritionHead(BaseModule):
         #         print(f"   >>> 如果 Label 是 1000，而 Pred 是 0.x，你需要考虑归一化 Label！")
         #     print("="*50 + "\n")
         
+        if not self.training and self.normalize:
+            pred = pred * self.nutrition_std + self.nutrition_means
+            pred = torch.clamp(pred, min=0.0)
+
         return pred
 
     def losses(self, pred: torch.Tensor, gt_nutrition: torch.Tensor) -> Dict[str, torch.Tensor]:
         losses = dict()
+
+        if self.normalize:
+            # 归一化标签，确保数值范围匹配
+            gt_nutrition = (gt_nutrition - self.nutrition_means) / (self.nutrition_std + 1e-6)
+
         losses['loss_reg'] = self.loss_reg(pred, gt_nutrition)
         return losses
 

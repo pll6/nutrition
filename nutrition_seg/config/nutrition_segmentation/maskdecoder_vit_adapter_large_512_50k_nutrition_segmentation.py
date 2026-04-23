@@ -14,6 +14,7 @@ csv_path='/data/zengyuzhi/project/nutrition/data/ingredients/dish_metadata.csv'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 train_means = [254.41, 214.82, 12.75, 19.12, 18.08]
+train_std = [209.83, 153.77, 13.52, 15.99, 20.05]
 
 train_pipeline = [
     dict(type='LoadImageWithDepthFromFile'),
@@ -120,9 +121,12 @@ model = dict(
         type='MultiScaleNutritionHead',
         in_channels_list=[1024, 1024, 1024, 1024],
         plate_embed_dim=1024,
+        normalize=True,
+        train_means=train_means,
+        train_std=train_std,
     ), 
     test_cfg=dict(mode='whole'),
-    alpaha_dice=1.0,
+    alpha_dice=1.0,
 )
 
 # =========================================================
