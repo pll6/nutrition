@@ -24,19 +24,26 @@ class MultiScaleNutritionHead(BaseModule):
         total_in_channels = sum(in_channels_list) + plate_embed_dim
         
         # 使用 AdaptiveAvgPool2d 确保无论输入尺寸多少，输出都是 1x1
-        self.gap = nn.AdaptiveAvgPool2d(1)
+        # 1. 🚨 第一道防线：驯服 Sum Pooling 产生的庞大数值
+        self.feat_norm = nn.LayerNorm(total_in_channels)
         
-        # 构建 MLP
+        # 2. 🚨 换上不死激活函数 GELU，并给每一层加上护具 LayerNorm
         self.mlp = nn.Sequential(
             nn.Linear(total_in_channels, 2048),
-            nn.ReLU(inplace=True),
+            nn.LayerNorm(2048),
+            nn.GELU(),
             nn.Dropout(p=dropout_ratio),
+            
             nn.Linear(2048, 512),
-            nn.ReLU(inplace=True),
+            nn.LayerNorm(512),
+            nn.GELU(),
             nn.Dropout(p=dropout_ratio),
-            nn.Linear(512, out_channels),
-            nn.Softplus()  # 强制输出正数
+            
+            nn.Linear(512, out_channels)
+            # 注意：我把 Softplus 移到了 forward 里面，方便做 Debug 拦截！
         )
+        
+        self.softplus = nn.Softplus()
         
         self.loss_reg = build_loss(loss_reg)
 
@@ -49,7 +56,7 @@ class MultiScaleNutritionHead(BaseModule):
                     if m.bias is not None:
                         constant_init(m.bias, 0)
 
-    def forward(self, plate_embed: torch.Tensor, masked_feats: List[torch.Tensor]) -> torch.Tensor:
+    def forward(self, plate_embed: torch.Tensor, masked_feats: List[torch.Tensor], gt_nutrition: torch.Tensor = None) -> torch.Tensor:
         """
         Returns:
             Tensor: 预测的营养数值, shape [B, out_channels].
@@ -67,7 +74,29 @@ class MultiScaleNutritionHead(BaseModule):
             
         feats = torch.cat(feats, dim=1) 
         feats = torch.cat([feats, plate_embed], dim=1)
-        pred = self.mlp(feats)
+        # 🚨 必须在送入 Linear 之前 Norm，否则数值爆炸
+        feats = self.feat_norm(feats)
+        
+        # 拿到 Linear 的原始输出（还未经过 Softplus）
+        raw_logits = self.mlp(feats)
+        
+        # 经过 Softplus 保证正数
+        pred = self.softplus(raw_logits)
+
+        # ==========================================
+        # 🐞 核心 DEBUG 监控区（每隔一定步数打印一次）
+        # ==========================================
+        # if self.training and torch.rand(1).item() < 0.5: # 大约 5% 的概率触发打印，防刷屏
+        #     print("\n" + "="*50)
+        #     print("🚀 [DEBUG] 回归头生命体征监控:")
+        #     print(f"1. 输入特征 (Sum Pooled): Mean={feats.mean().item():.4f}, Max={feats.max().item():.4f}, Min={feats.min().item():.4f}")
+        #     print(f"2. Linear 原始输出 (Raw Logits): Mean={raw_logits.mean().item():.4f}, Max={raw_logits.max().item():.4f}, Min={raw_logits.min().item():.4f}")
+        #     print(f"   >>> 如果这里全是 -20 以下的负数，说明你的网络被砸晕了，Softplus 的梯度已死！")
+        #     print(f"3. Softplus 最终预测 (Pred): Mean={pred.mean().item():.4f}, Max={pred.max().item():.4f}")
+        #     if gt_nutrition is not None:
+        #         print(f"4. 真实标签 (GT Label): Mean={gt_nutrition.mean().item():.4f}, Max={gt_nutrition.max().item():.4f}")
+        #         print(f"   >>> 如果 Label 是 1000，而 Pred 是 0.x，你需要考虑归一化 Label！")
+        #     print("="*50 + "\n")
         
         return pred
 
@@ -77,5 +106,5 @@ class MultiScaleNutritionHead(BaseModule):
         return losses
 
     def forward_train(self, plate_embed: torch.Tensor, masked_feats: List[torch.Tensor], gt_nutrition: torch.Tensor) -> Dict[str, torch.Tensor]:
-        pred = self.forward(plate_embed, masked_feats)
+        pred = self.forward(plate_embed, masked_feats, gt_nutrition)
         return self.losses(pred, gt_nutrition)

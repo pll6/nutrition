@@ -70,19 +70,42 @@ class EncoderMaskDecoder(BaseSegmentor):
         x = self.extract_feat(img, depth=depth)
         out = self._decode_head_forward_test(x, img_metas)
         
-        # 🚨 这里的处理很关键
         if isinstance(out, tuple):
-            # 假设 out = (cls_scores, mask_preds, plate_embed)
             cls_scores, mask_preds = out 
             
-            # 模仿 MaskFormer 的推理逻辑：将 query 映射回像素空间
-            cls_prob = cls_scores.softmax(-1)
-            # 这里的索引 [:, :, :-1] 是为了去掉背景类，具体看你 num_classes 的定义
-            seg_logit = torch.einsum('bqc,bqhw->bchw', cls_prob[:, :, :-1], mask_preds)
+            cls_prob = cls_scores.softmax(dim=-1) 
+            fg_prob = cls_prob[..., 1]  # [B, Q]
+            mask_probs = mask_preds.sigmoid() # [B, Q, H, W]
+            
+            # 乘上前景概率权重
+            weighted_mask_probs = mask_probs * fg_prob.unsqueeze(-1).unsqueeze(-1) 
+            
+            # 使用 max 提取最强 Query
+            seg_logit = torch.max(weighted_mask_probs, dim=1)[0].unsqueeze(1)
+
+            # ========================================================
+            # 🐞 核心 DEBUG 探针区 (只在测试第一张图时打印，防止刷屏)
+            # ========================================================
+            # if not hasattr(self, '_printed_debug'):
+            #     print("\n" + "="*50)
+            #     print("🐞 [DEBUG INFO] 模型推理张量状态：")
+            #     print(f"1. cls_prob (类别概率): shape {cls_prob.shape}")
+            #     print(f"   -> 20个Query的【前景概率最大值】: {fg_prob.max().item():.4f}")
+            #     print(f"   -> 20个Query的【前景概率平均值】: {fg_prob.mean().item():.4f}")
+                
+            #     print(f"2. mask_preds (原始掩码): max {mask_preds.max().item():.4f}, min {mask_preds.min().item():.4f}")
+            #     print(f"3. mask_probs (Sigmoid后): max {mask_probs.max().item():.4f}, min {mask_probs.min().item():.4f}")
+                
+            #     print(f"4. seg_logit (最终融合概率): shape {seg_logit.shape}")
+            #     print(f"   -> 全图【最高】前景概率: {seg_logit.max().item():.4f}")
+            #     print(f"   -> 全图【最低】前景概率: {seg_logit.min().item():.4f}")
+            #     print("="*50 + "\n")
+            #     self._printed_debug = True # 打个标记，只打印一次
+            # ========================================================
+            
         else:
             seg_logit = out
 
-        # 这样 resize 拿到的才是 [B, C, H, W] 的标准分割图
         out_resized = resize(
             input=seg_logit,
             size=img.shape[2:],
@@ -245,6 +268,12 @@ class EncoderMaskDecoder(BaseSegmentor):
 
         seg_logit = self.encode_decode(img, img_meta, depth)
         if rescale:
+            # 🚨 核心修复：必须先把 Pad 加的黑边裁掉！否则黑边会被挤压进画面
+            if 'img_shape' in img_meta[0]:
+                # img_shape 是 padding 前的真实画面尺寸 (比如 384x512)
+                valid_h, valid_w = img_meta[0]['img_shape'][:2]
+                seg_logit = seg_logit[:, :, :valid_h, :valid_w]
+
             # support dynamic shape for onnx
             if torch.onnx.is_in_onnx_export():
                 size = img.shape[2:]
@@ -259,6 +288,7 @@ class EncoderMaskDecoder(BaseSegmentor):
 
         return seg_logit
 
+    
     def inference(self, img, img_meta, rescale, depth=None, **kwargs):
         """Inference with slide/whole style.
 
@@ -282,7 +312,12 @@ class EncoderMaskDecoder(BaseSegmentor):
             seg_logit = self.slide_inference(img, img_meta, rescale, depth=depth, **kwargs)
         else:
             seg_logit = self.whole_inference(img, img_meta, rescale, depth=depth, **kwargs)
-        output = F.softmax(seg_logit, dim=1)
+        
+        if seg_logit.shape[1] == 1:
+            output = seg_logit
+        else:
+            output = F.softmax(seg_logit, dim=1) # 多通道用 Softmax
+
         flip = img_meta[0]['flip']
         if flip:
             flip_direction = img_meta[0]['flip_direction']
@@ -299,7 +334,13 @@ class EncoderMaskDecoder(BaseSegmentor):
         
         # 1. 运行原有的分割推理获取 mask (注意传入了 depth)
         seg_logit = self.inference(img, img_meta, rescale, depth=depth)
-        seg_pred = seg_logit.argmax(dim=1)
+
+        if seg_logit.shape[1] == 1:
+            # 设定 0.5 为阈值，大于 0.5 的像素标为 1 (foreground)
+            seg_pred = (seg_logit > 0.5).long().squeeze(1) 
+        else:
+            seg_pred = seg_logit.argmax(dim=1)
+
         if torch.onnx.is_in_onnx_export():
             seg_pred = seg_pred.unsqueeze(0)
             return seg_pred

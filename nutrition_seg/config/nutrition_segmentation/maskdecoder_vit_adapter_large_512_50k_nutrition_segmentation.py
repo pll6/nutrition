@@ -55,8 +55,8 @@ test_pipeline = [
 # 3. 数据集大本营区 (指定花名册)
 # =========================================================
 data = dict(
-    samples_per_gpu=4,  
-    workers_per_gpu=4,
+    samples_per_gpu=8,  
+    workers_per_gpu=8,
     train=dict(
         type='Nutrition5kDataset',
         data_root='/data/zengyuzhi/project/nutrition/data',
@@ -121,30 +121,48 @@ model = dict(
         in_channels_list=[1024, 1024, 1024, 1024],
         plate_embed_dim=1024,
     ), 
-    test_cfg=dict(mode='whole')
+    test_cfg=dict(mode='whole'),
+    alpaha_dice=1.0,
 )
 
 # =========================================================
 # 5. 训练引擎配置区 (优化器、学习率、保存策略)
 # =========================================================
 # AdamW 是 ViT 和 MaskFormer 系列的标配
-optimizer = dict(type='AdamW', lr=0.0001, weight_decay=0.05, 
-                 paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1)}))
+# optimizer = dict(type='AdamW', lr=0.0002, weight_decay=0.05, 
+#                  paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1)}))
+optimizer = dict(
+    type='AdamW', 
+    lr=0.0002,  
+    weight_decay=0.05, 
+    paramwise_cfg=dict(
+        custom_keys={
+            'backbone': dict(lr_mult=0.1),      # Backbone 稳住 (实际 LR = 1e-5)
+            'decode_head': dict(lr_mult=0.1),   # 分割头 稳住 (实际 LR = 1e-5)
+            'regression_head': dict(lr_mult=10.0) # 🚨 核心：回归头步长放大10倍！(实际 LR = 1e-3)
+        }
+    )
+)
 optimizer_config = dict()
 
 # 学习率衰减策略
-lr_config = dict(policy='poly', power=0.9, min_lr=0.0, by_epoch=False)
+lr_config = dict(policy='poly', power=0.9, min_lr=0.0, by_epoch=False,
+# 🚨 新增：线性预热机制
+    warmup='linear',
+    warmup_iters=1500,    # 前 1500 步作为缓冲期
+    warmup_ratio=1e-6     # 从极其微小的学习率开始，慢慢爬升到设定的初始学习率
+)
 
 # 跑多少次迭代
-runner = dict(type='IterBasedRunner', max_iters=40000)
-checkpoint_config = dict(by_epoch=False, interval=5000)
+runner = dict(type='IterBasedRunner', max_iters=50000)
+checkpoint_config = dict(by_epoch=False, interval=5000, max_keep_ckpts=3)
 evaluation = dict(interval=1000, metric='mIoU')
 
 # 官方基础配置 (日志格式、分布式训练钩子等，这些没法手写，可以直接借用默认的)
 log_config = dict(interval=50, hooks=[dict(type='TextLoggerHook')])
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = '/data/zengyuzhi/project/nutrition/work_dirs/nutrition_seg/iter_5000.pth'
+load_from = '/data/zengyuzhi/project/nutrition/work_dirs/segment/iter_7500.pth'
 resume_from = None
 workflow = [('train', 1)]
 cudnn_benchmark = True 
