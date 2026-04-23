@@ -23,7 +23,7 @@ train_pipeline = [
         type='Resize', 
         img_scale=(512, 512),   
         ratio_range=None,   
-        keep_ratio=False      
+        keep_ratio=True      
     ),
     # dict(type='RandomCrop', crop_size=crop_size, cat_max_ratio=0.75),
     dict(type='RandomFlip', prob=0.5),
@@ -43,9 +43,10 @@ test_pipeline = [
         img_scale=(512, 512),   
         flip=False,           
         transforms=[
-            dict(type='Resize', keep_ratio=False), 
+            dict(type='Resize', keep_ratio=True), 
             dict(type='Normalize', **img_norm_cfg),
             dict(type='NormalizeDepth', mode='z-score', mean=depth_mean, std=depth_std),
+            dict(type='ModifiedPad', size=(512, 512), pad_val=0, seg_pad_val=255),
             dict(type='ImageToTensor', keys=['img', 'depth']),
             dict(type='Collect', keys=['img', 'depth'])
         ])
