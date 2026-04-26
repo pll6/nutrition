@@ -7,11 +7,11 @@ from .match_costs import (ClassificationCost, CrossEntropyLossCost, DiceCost,
                           MaskFocalLossCost)
 from .weighted_mse_loss import WeightedMSELoss
 from .log_l1_loss import LogL1Loss
-from .smooth_l1_loss import SmoothL1Loss
+from .smooth_l1_loss import SmoothL1Loss, MultiTaskUncertaintyLoss
 
 __all__ = [
     'cross_entropy', 'binary_cross_entropy', 'mask_cross_entropy',
     'CrossEntropyLoss', 'DiceLoss', 'FocalLoss', 'ClassificationCost',
     'MaskFocalLossCost', 'DiceCost', 'CrossEntropyLossCost', 'WeightedMSELoss',
-    'LogL1Loss', 'SmoothL1Loss'
+    'LogL1Loss', 'SmoothL1Loss', 'MultiTaskUncertaintyLoss'
 ]
