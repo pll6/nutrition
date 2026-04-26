@@ -12,9 +12,9 @@ class MultiScaleNutritionHead(BaseModule):
                  in_channels_list: List[int], 
                  plate_embed_dim: int,
                  normalize: bool,
-                 train_means,
-                 train_std,
                  loss_reg,
+                 train_means=None,
+                 train_std=None,
                  out_channels: int = 5, 
                  dropout_ratio: float = 0.2,
                  init_cfg: Optional[Dict] = None):
@@ -24,13 +24,24 @@ class MultiScaleNutritionHead(BaseModule):
             f"plate_embed_dim ({plate_embed_dim}) does not match the last element of in_channels_list ({in_channels_list[-1]})"
 
         self.in_channels_list = in_channels_list
-        total_in_channels = sum(in_channels_list) + plate_embed_dim
+        self.plate_embed_dim = plate_embed_dim
+        self.out_channels = out_channels
         
-        # 使用 AdaptiveAvgPool2d 确保无论输入尺寸多少，输出都是 1x1
+        food_channels = sum(in_channels_list)
+        
+
         # 1. 🚨 第一道防线：驯服 Sum Pooling 产生的庞大数值
-        self.feat_norm = nn.LayerNorm(total_in_channels)
+        # self.food_norm = nn.LayerNorm(food_channels)
+        self.plate_norm = nn.LayerNorm(plate_embed_dim)
         
-        # 2. 🚨 换上不死激活函数 GELU，并给每一层加上护具 LayerNorm
+        self.plate_modulator = nn.Sequential(
+            nn.Linear(plate_embed_dim, food_channels // 2),
+            nn.GELU(),
+            nn.Linear(food_channels // 2, food_channels),
+            nn.Sigmoid()
+        )
+
+        total_in_channels = food_channels + plate_embed_dim
         self.mlp = nn.Sequential(
             nn.Linear(total_in_channels, 2048),
             nn.LayerNorm(2048),
@@ -83,21 +94,25 @@ class MultiScaleNutritionHead(BaseModule):
             pooled = feat.sum(dim=(2, 3))
             feats.append(pooled)
             
-        feats = torch.cat(feats, dim=1) 
-        feats = torch.cat([feats, plate_embed], dim=1)
-        # 🚨 必须在送入 Linear 之前 Norm，否则数值爆炸
-        feats = self.feat_norm(feats)
+        # 2. 独立归一化 (将巨大的 Sum 面积压缩到健康分布，同时保留相对大小)
+        food_feats = torch.cat(feats, dim=1)
+        food_feats = food_feats / 10000.0
         
-        # 拿到 Linear 的原始输出（还未经过 Softplus）
+        plate_embed = self.plate_norm(plate_embed)
+        
+        # 3. 门控融合：用盘子作为参照物，计算物理“体积/密度”
+        plate_gate = self.plate_modulator(plate_embed)
+        modulated_food = food_feats * plate_gate
+        
+        # 4. 最终预测
+        feats = torch.cat([modulated_food, plate_embed], dim=1)
         raw_logits = self.mlp(feats)
-        
-        # 经过 Softplus 保证正数
         pred = self.softplus(raw_logits)
 
         # ==========================================
         # 🐞 核心 DEBUG 监控区（每隔一定步数打印一次）
         # ==========================================
-        # if self.training and torch.rand(1).item() < 0.5: # 大约 5% 的概率触发打印，防刷屏
+        # if self.training and torch.rand(1).item() < 0.01: # 大约 5% 的概率触发打印，防刷屏
         #     print("\n" + "="*50)
         #     print("🚀 [DEBUG] 回归头生命体征监控:")
         #     print(f"1. 输入特征 (Sum Pooled): Mean={feats.mean().item():.4f}, Max={feats.max().item():.4f}, Min={feats.min().item():.4f}")
@@ -109,6 +124,43 @@ class MultiScaleNutritionHead(BaseModule):
         #         print(f"   >>> 如果 Label 是 1000，而 Pred 是 0.x，你需要考虑归一化 Label！")
         #     print("="*50 + "\n")
         
+        # ========================================================
+        # 🧪 验证集探针：Plate 特征敏感度消融实验 (已修复归一化 Bug)
+        # ========================================================
+        if not self.training:
+            if torch.rand(1).item() < 0.05:
+                fake_plate = torch.zeros_like(plate_embed)
+                fake_plate_normed = self.plate_norm(fake_plate)
+                fake_gate = self.plate_modulator(fake_plate_normed)
+                fake_modulated = food_feats * fake_gate
+                fake_feats_cat = torch.cat([fake_modulated, fake_plate_normed], dim=1)
+                fake_pred = self.softplus(self.mlp(fake_feats_cat))
+                
+                # 🚨 修复：在算百分比偏离度之前，先局部转换回物理量纲，防止分母为负数
+                probe_real_pred = pred
+                probe_fake_pred = fake_pred
+                if self.normalize:
+                    probe_real_pred = pred * self.nutrition_std + self.nutrition_means
+                    probe_fake_pred = fake_pred * self.nutrition_std + self.nutrition_means
+                
+                # 保证分母为正，避免负数百分比
+                probe_real_pred = torch.clamp(probe_real_pred, min=1e-3)
+                probe_fake_pred = torch.clamp(probe_fake_pred, min=0.0)
+
+                deviation = torch.abs(probe_real_pred - probe_fake_pred) / probe_real_pred
+                mean_dev = deviation.mean().item() * 100
+                
+                print("\n" + "🧪" * 25)
+                print(f"[验证集 DEBUG] Plate 门控消融探针:")
+                print(f" -> 正常预测平均值(物理尺度): {probe_real_pred.mean().item():.2f}")
+                print(f" -> 抹除盘子后，预测值平均偏离了: {mean_dev:.2f}%")
+                if mean_dev < 1.0:
+                    print(" 🚨 灾难警告：门控失效！模型依然没看盘子！")
+                elif mean_dev > 10.0:
+                    print(" ✅ 健康：门控生效！模型极度依赖盘子尺度信息！")
+                print("🧪" * 25 + "\n")
+        # ========================================================
+
         if not self.training and self.normalize:
             pred = pred * self.nutrition_std + self.nutrition_means
             pred = torch.clamp(pred, min=0.0)
@@ -128,3 +180,9 @@ class MultiScaleNutritionHead(BaseModule):
     def forward_train(self, plate_embed: torch.Tensor, masked_feats: List[torch.Tensor], gt_nutrition: torch.Tensor) -> Dict[str, torch.Tensor]:
         pred = self.forward(plate_embed, masked_feats, gt_nutrition)
         return self.losses(pred, gt_nutrition)
+
+
+
+
+
+        

@@ -145,13 +145,11 @@ class Nutrition5kDataset(CustomDataset):
         # ========================================================
         # 2. 我们自己计算 PMAE (营养素误差)
         # ========================================================
-        # 只要配置了 PMAE，或者干脆默认每次都算
-        if 'PMAE' in metrics or True:  # 强烈建议这里加上 or True，保证每次验证必定输出误差
+        if 'PMAE' in metrics or True: 
             csv_path = '/data/zengyuzhi/project/nutrition/data/ingredients/dish_metadata.csv'
             nutrition_dict = {} 
             
             if osp.exists(csv_path):
-                # print(f"DEBUG: 成功找到 CSV 文件: {csv_path}") # 嫌吵可以注释掉
                 with open(csv_path, 'r', encoding='utf-8') as f:
                     for line in f:
                         parts = line.strip().split(',')
@@ -165,9 +163,11 @@ class Nutrition5kDataset(CustomDataset):
             else:
                 print(f"\n[Error] 找不到营养标签文件: {csv_path}，请检查路径！")
 
-            all_errors = []
+            # 🚨 修改点 1：我们需要收集所有预测值和真值，而不是中途算误差
+            all_preds = []
+            all_gts = []
+            
             for i, res in enumerate(results):
-                # 获取我们在 pre_eval 中打包的 n_pred
                 n_pred_val = res.get('n_pred')
                 if n_pred_val is None: 
                     continue
@@ -178,28 +178,37 @@ class Nutrition5kDataset(CustomDataset):
                 
                 if match and match.group(1) in nutrition_dict:
                     gt_nutrition = nutrition_dict[match.group(1)]
-                    denominator = np.maximum(gt_nutrition, 1.0) 
-        
-                    abs_error = np.abs(pred_nutrition - gt_nutrition)
-                    p_error = abs_error / denominator 
-                    all_errors.append(p_error)
+                    
+                    # 收集所有的 pred 和 gt
+                    all_preds.append(pred_nutrition)
+                    all_gts.append(gt_nutrition)
 
-            if len(all_errors) > 0:
-                all_errors = np.array(all_errors)
-                mean_pmae = np.mean(all_errors, axis=0) * 100
+            if len(all_preds) > 0:
+                all_preds = np.array(all_preds) # [N, 5]
+                all_gts = np.array(all_gts)     # [N, 5]
+                
+                # 🚨 修改点 2：严格按照论文公式 6 计算 PMAE
+                # 公式 (5): 计算每个成分的 MAE (平均绝对误差)
+                mae_k = np.mean(np.abs(all_preds - all_gts), axis=0)
+                
+                # 公式 (6) 的分母: 计算每个成分的 GT 平均值
+                mean_gt_k = np.mean(all_gts, axis=0)
+                
+                # 为了防止除以 0，加一个小常数 epsilon
+                mean_pmae = (mae_k / (mean_gt_k + 1e-6)) * 100
+                
                 nutrition_names = ['Calories', 'Mass', 'Fat', 'Carb', 'Protein']
                 
-                # 把营养结果塞进 eval_results，和 mIoU 合并
+                # 把营养结果塞进 eval_results
                 for name, val in zip(nutrition_names, mean_pmae):
                     eval_results[f'PMAE_{name}'] = round(val, 2)
                 eval_results['mPMAE'] = round(np.mean(mean_pmae), 2)
                 
-                # 手动打印漂亮的表格
                 print("\n" + "="*40)
                 print("        营养回归评价结果 (PMAE)      ")
                 print("-" * 40)
                 for k, v in eval_results.items():
-                    if 'PMAE' in k: # 只打印我们自己的，mIoU父类会打印
+                    if 'PMAE' in k:
                         print(f" {k:<15} : {v:>10}%")
                 print("="*40 + "\n")
             else:
