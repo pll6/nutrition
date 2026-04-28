@@ -9,10 +9,10 @@ from mmseg.datasets.pipelines import LoadImageFromFile
 
 @PIPELINES.register_module()
 class LoadImageWithDepthFromFile(LoadImageFromFile):
-    def __init__(self, multiple_camara_param = True, **kwargs):
+    def __init__(self, multiple_camera_param = True, **kwargs):
         super().__init__(**kwargs)
 
-        self.multiple_camara_param = multiple_camara_param
+        self.multiple_camera_param = multiple_camera_param
 
     def __call__(self, results):
         results = super().__call__(results)
@@ -34,7 +34,7 @@ class LoadImageWithDepthFromFile(LoadImageFromFile):
 
         valid_pixels = depth_img[depth_img > 0]
         
-        if self.multiple_camara_param:
+        if self.multiple_camera_param:
             if len(valid_pixels) > 0:
                 median_depth = np.median(valid_pixels)
                 # 如果中位数大于 1500，说明用了高精度刻度 (0.1mm)，强行除以 10 统一为 1mm
@@ -128,7 +128,7 @@ class LoadNutritionFromCSV(object):
         
         # 存入文本 Ground Truth (List[str])
         # 例如: ['soy sauce', 'garlic', 'white rice', ...]
-        # results['gt_ingredients'] = dish_info['ingredient_names']
+        results['gt_ingredients'] = dish_info['ingredient_names']
         
         return results
 

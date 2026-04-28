@@ -23,6 +23,7 @@ class EncoderMaskDecoder(BaseSegmentor):
                  decode_head,
                  pretrained,
                  alpha_dice=0.1,
+                 infoNCE_loss_weight=0.1,
                  regression_head=None,
                  text_encoder=None,                 
                  neck=None,
@@ -52,33 +53,14 @@ class EncoderMaskDecoder(BaseSegmentor):
 
         self.alpha_dice = alpha_dice
 
+        self.text_encoder = text_encoder
         if text_encoder is not None:
             self._init_text_encoder(text_encoder)
             self.visual_proj_branch = TEXT_ENCODERS.build(
                 type='VisualProjectionBranch',
                 in_channels=self.backbone.embed_dim, 
-                proj_channels=self.clip_dim)
-            
-            if dist.is_available() and dist.is_initialized():
-                rank = dist.get_rank()
-                world_size = dist.get_world_size()
-            else:
-                rank = 0
-                world_size = 1
-                
-            if world_size > 1:
-                self.clip_loss_fn = LOSSES.build(
-                    type='ClipLoss',
-                    local_loss=False,
-                    gather_with_grad=True,
-                    rank=rank,
-                    world_size=world_size)
-            else:
-                # 🧙‍♂️ 单卡环境：启用跨批次特征队列黑魔法 (SingleGPUCrossBatchLoss)
-                self.clip_loss_fn = LOSSES.build(   
-                    type='SingleGPUCrossBatchLoss',
-                    feature_dim=self.clip_dim, 
-                    queue_size=1024)
+                proj_channels=self.clip_dim,
+                loss_weight=infoNCE_loss_weight)
 
     def _init_decode_head(self, decode_head):
         """Initialize ``decode_head``"""
@@ -184,6 +166,7 @@ class EncoderMaskDecoder(BaseSegmentor):
                       gt_labels,
                       gt_masks, 
                       gt_nutrition,
+                      gt_ingredients,
                       **kwargs):
         """Forward function for training.
 
@@ -207,12 +190,18 @@ class EncoderMaskDecoder(BaseSegmentor):
 
         losses = dict()
 
+        if self.text_encoder is not None:
+            text_embed = self.text_encoder.get_classifier_by_vocabulary(gt_ingredients)
+            visual_embed = self.visual_proj_branch(feats)
+            loss_clip = self.visual_proj_branch.forward_train(visual_embed, text_embed)
+            losses.update(loss_clip)
+
         loss_decode, decoder_train_output = self._decode_head_forward_train(x, img_metas, gt_semantic_seg, gt_labels, gt_masks, **kwargs)
         
         if self.regression_head is None:
             losses.update(loss_decode)
             return losses
-
+        
         for k, v in loss_decode.items():
             losses[f'stage1_{k}'] = v * getattr(self, 'alpha_dice', 0.1)
 
@@ -424,14 +413,6 @@ class EncoderMaskDecoder(BaseSegmentor):
         weighted_mask_probs = mask_probs * fg_prob.unsqueeze(-1).unsqueeze(-1) # [B, Q, H, W]
         mask = torch.max(weighted_mask_probs, dim=1)[0].unsqueeze(1)
 
-        
-        # # =======================================================
-        # # 🛡️ 3D 特征拯救计划：形态学膨胀 (Dilation)
-        # # =======================================================
-        # # 强行向外扩张 7 个像素，把紧贴食物边缘的阴影和厚度落差吃进来
-        # mask = F.max_pool2d(mask.float(), kernel_size=15, stride=1, padding=7)
-        # # =======================================================
-
         masked_feats = []
         mask_h, mask_w = mask.shape[2], mask.shape[3]
         for f in feats:
@@ -440,13 +421,12 @@ class EncoderMaskDecoder(BaseSegmentor):
                 mask_resized = mask
             else:
                 mask_resized = F.interpolate(
-                    mask, # <--- 换成膨胀后的 mask
+                    mask, 
                     size=(feat_h, feat_w), 
                     mode='bilinear', 
                     align_corners=False
                 )
 
-            # 此时的 masked_feat 就不再是“切平的贴纸”，而是“带有底座和阴影的 3D 块”了    
             masked_feat = f * mask_resized
             masked_feats.append(masked_feat)
 
