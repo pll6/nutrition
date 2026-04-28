@@ -4,10 +4,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from mmseg.core import add_prefix
 from mmseg.models import builder
-from mmseg.models.builder import SEGMENTORS
+from mmseg.models.builder import SEGMENTORS, LOSSES
 from mmseg.models.segmentors.base import BaseSegmentor
 from mmseg.ops import resize
-
+from ..builder import TEXT_ENCODERS
+import torch.distributed as dist
 
 @SEGMENTORS.register_module()
 class EncoderMaskDecoder(BaseSegmentor):
@@ -22,7 +23,8 @@ class EncoderMaskDecoder(BaseSegmentor):
                  decode_head,
                  pretrained,
                  alpha_dice=0.1,
-                 regression_head=None,                 
+                 regression_head=None,
+                 text_encoder=None,                 
                  neck=None,
                  train_cfg=None,
                  test_cfg=None,
@@ -38,7 +40,7 @@ class EncoderMaskDecoder(BaseSegmentor):
         decode_head.update(train_cfg=train_cfg)
         decode_head.update(test_cfg=test_cfg)
         self._init_decode_head(decode_head)
-
+                                                                                                                  
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
 
@@ -50,11 +52,43 @@ class EncoderMaskDecoder(BaseSegmentor):
 
         self.alpha_dice = alpha_dice
 
+        if text_encoder is not None:
+            self._init_text_encoder(text_encoder)
+            self.visual_proj_branch = TEXT_ENCODERS.build(
+                type='VisualProjectionBranch',
+                in_channels=self.backbone.embed_dim, 
+                proj_channels=self.clip_dim)
+            
+            if dist.is_available() and dist.is_initialized():
+                rank = dist.get_rank()
+                world_size = dist.get_world_size()
+            else:
+                rank = 0
+                world_size = 1
+                
+            if world_size > 1:
+                self.clip_loss_fn = LOSSES.build(
+                    type='ClipLoss',
+                    local_loss=False,
+                    gather_with_grad=True,
+                    rank=rank,
+                    world_size=world_size)
+            else:
+                # 🧙‍♂️ 单卡环境：启用跨批次特征队列黑魔法 (SingleGPUCrossBatchLoss)
+                self.clip_loss_fn = LOSSES.build(   
+                    type='SingleGPUCrossBatchLoss',
+                    feature_dim=self.clip_dim, 
+                    queue_size=1024)
+
     def _init_decode_head(self, decode_head):
         """Initialize ``decode_head``"""
         self.decode_head = builder.build_head(decode_head)
         self.align_corners = self.decode_head.align_corners
         self.num_classes = self.decode_head.num_classes
+
+    def _init_text_encoder(self, text_encoder):
+        self.text_encoder = TEXT_ENCODERS.build(text_encoder)
+        self.clip_dim = self.text_encoder.text_projection.shape[1]
 
     def extract_feat(self, img, depth, *args, **kwargs):
         # 🚨 核心修复：如果是列表，取第一个元素 (DataContainer 的常见行为)
@@ -390,6 +424,14 @@ class EncoderMaskDecoder(BaseSegmentor):
         weighted_mask_probs = mask_probs * fg_prob.unsqueeze(-1).unsqueeze(-1) # [B, Q, H, W]
         mask = torch.max(weighted_mask_probs, dim=1)[0].unsqueeze(1)
 
+        
+        # # =======================================================
+        # # 🛡️ 3D 特征拯救计划：形态学膨胀 (Dilation)
+        # # =======================================================
+        # # 强行向外扩张 7 个像素，把紧贴食物边缘的阴影和厚度落差吃进来
+        # mask = F.max_pool2d(mask.float(), kernel_size=15, stride=1, padding=7)
+        # # =======================================================
+
         masked_feats = []
         mask_h, mask_w = mask.shape[2], mask.shape[3]
         for f in feats:
@@ -398,11 +440,13 @@ class EncoderMaskDecoder(BaseSegmentor):
                 mask_resized = mask
             else:
                 mask_resized = F.interpolate(
-                    mask, 
+                    mask, # <--- 换成膨胀后的 mask
                     size=(feat_h, feat_w), 
                     mode='bilinear', 
                     align_corners=False
                 )
+
+            # 此时的 masked_feat 就不再是“切平的贴纸”，而是“带有底座和阴影的 3D 块”了    
             masked_feat = f * mask_resized
             masked_feats.append(masked_feat)
 
