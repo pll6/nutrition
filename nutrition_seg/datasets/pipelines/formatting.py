@@ -82,5 +82,7 @@ class DefaultFormatBundle(object):
             results['gt_masks'] = DC(to_tensor(results['gt_masks']), stack=False)
         if 'gt_labels' in results:
             results['gt_labels'] = DC(to_tensor(results['gt_labels']), stack=False)
-
+        if 'gt_ingredients' in results:
+            # 加上 cpu_only=True，防止 collate 无限递归拆解字符串
+            results['gt_ingredients'] = DC(results['gt_ingredients'], cpu_only=True)
         return results

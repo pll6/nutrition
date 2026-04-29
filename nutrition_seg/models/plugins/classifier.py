@@ -7,7 +7,6 @@ import open_clip
 from open_clip.model import CLIP
 from open_clip import tokenizer
 
-from .utils import get_labelset_from_dataset
 from ..builder import TEXT_ENCODERS
 
 

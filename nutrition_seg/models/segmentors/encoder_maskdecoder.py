@@ -57,10 +57,10 @@ class EncoderMaskDecoder(BaseSegmentor):
         if text_encoder is not None:
             self._init_text_encoder(text_encoder)
             self.visual_proj_branch = TEXT_ENCODERS.build(
-                type='VisualProjectionBranch',
-                in_channels=self.backbone.embed_dim, 
-                proj_channels=self.clip_dim,
-                loss_weight=infoNCE_loss_weight)
+                dict(type='VisualProjectionBranch',
+                     in_channels=self.backbone.embed_dim,
+                     proj_channels=self.clip_dim,
+                     loss_weight=infoNCE_loss_weight))
 
     def _init_decode_head(self, decode_head):
         """Initialize ``decode_head``"""
@@ -191,9 +191,17 @@ class EncoderMaskDecoder(BaseSegmentor):
         losses = dict()
 
         if self.text_encoder is not None:
-            text_embed = self.text_encoder.get_classifier_by_vocabulary(gt_ingredients)
-            visual_embed = self.visual_proj_branch(feats)
-            loss_clip = self.visual_proj_branch.forward_train(visual_embed, text_embed)
+            batch_text_list = []
+            for ingredients in gt_ingredients:
+                if isinstance(ingredients, list):
+                    # 如果是列表 ['beef', 'salt']，就用逗号拼成单句 'beef, salt'
+                    joined_text = ", ".join([str(item) for item in ingredients])
+                    batch_text_list.append(joined_text)
+                else:
+                    # 如果本身已经是字符串了，直接放进去
+                    batch_text_list.append(str(ingredients))
+            text_embed = self.text_encoder.get_classifier_by_vocabulary(batch_text_list)
+            loss_clip = self.visual_proj_branch.forward_train(feats, text_embed)
             losses.update(loss_clip)
 
         loss_decode, decoder_train_output = self._decode_head_forward_train(x, img_metas, gt_semantic_seg, gt_labels, gt_masks, **kwargs)

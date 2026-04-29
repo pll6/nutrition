@@ -86,7 +86,7 @@ class VisualProjectionBranch(BaseModule):
         return img_embeds
 
     def forward_train(self, feature_maps: List[torch.Tensor], text_embeds: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
-        img_embeds = self.forward(feature_maps)
+        img_embeds = self(feature_maps)
         losses = dict()
         if self.loss_clip is not None and text_embeds is not None:
             raw_loss = self.loss_clip(img_embeds, text_embeds, self.logit_scale, **kwargs)
