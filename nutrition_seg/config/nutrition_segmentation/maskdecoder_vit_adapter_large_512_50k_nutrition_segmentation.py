@@ -121,9 +121,10 @@ model = dict(
         type='MultiScaleNutritionHead',
         in_channels_list=[1024, 1024, 1024, 1024],
         plate_embed_dim=1024,
-        normalize=True,
+        normalize=False,
         train_means=train_means,
         train_std=train_std,
+        loss_reg=dict(type='LogL1Loss', loss_weight=2.),
     ), 
     test_cfg=dict(mode='whole'),
     alpha_dice=1.0,
@@ -160,7 +161,7 @@ lr_config = dict(policy='poly', power=0.9, min_lr=0.0, by_epoch=False,
 # 跑多少次迭代
 runner = dict(type='IterBasedRunner', max_iters=50000)
 checkpoint_config = dict(by_epoch=False, interval=5000, max_keep_ckpts=3)
-evaluation = dict(interval=1000, metric='mIoU')
+evaluation = dict(interval=1000, metric=['mIoU', 'PMAE'],)
 
 # 官方基础配置 (日志格式、分布式训练钩子等，这些没法手写，可以直接借用默认的)
 log_config = dict(interval=50, hooks=[dict(type='TextLoggerHook')])

@@ -17,7 +17,7 @@ class PredefinedOvClassifier(nn.Module):
         clip_model_name: str = "ViT-L-14",
         pretrained='laion2b_s32b_b82k',
         cache_feature: bool = True,
-        templates: List[str] = ["a photo of {}"],
+        templates: List[str] = ["a photo of food containing {}."],
     ):
         clip_model, _, _ = open_clip.create_model_and_transforms(
             model_name=clip_model_name, 
